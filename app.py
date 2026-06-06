@@ -38,17 +38,18 @@ def index():
 
 # --- API Routes ---
 
+
 @app.route("/api/stats", methods=["GET"])
 def get_stats():
     """Return dashboard statistics."""
     conn = get_db_connection()
     today = date.today().isoformat()
-    
+
     total = conn.execute("SELECT COUNT(*) FROM Vocabulary").fetchone()[0]
     due = conn.execute(
         "SELECT COUNT(*) FROM Vocabulary WHERE next_review <= ?", (today,)
     ).fetchone()[0]
-    
+
     # Mastered = interval >= 21 days
     mastered = conn.execute(
         "SELECT COUNT(*) FROM Vocabulary WHERE interval >= 21"
@@ -62,13 +63,15 @@ def get_stats():
         d = (date.today() - timedelta(days=i)).isoformat()
         daily.append({"date": d, "count": 0})
 
-    return jsonify({
-        "total": total,
-        "due": due,
-        "mastered": mastered,
-        "learning": learning,
-        "daily": daily
-    })
+    return jsonify(
+        {
+            "total": total,
+            "due": due,
+            "mastered": mastered,
+            "learning": learning,
+            "daily": daily,
+        }
+    )
 
 
 @app.route("/api/decks", methods=["GET"])
@@ -76,7 +79,7 @@ def get_decks():
     """Return an aggregated list of decks and their card counts."""
     conn = get_db_connection()
     today = date.today().isoformat()
-    
+
     rows = conn.execute(
         """
         SELECT deck_id, 
@@ -85,18 +88,20 @@ def get_decks():
         FROM Vocabulary 
         GROUP BY deck_id
         """,
-        (today,)
+        (today,),
     ).fetchall()
     conn.close()
 
     decks = []
     for r in rows:
-        decks.append({
-            "id": r["deck_id"],
-            "name": str(r["deck_id"]).replace("-", " ").title(),
-            "total": r["total"],
-            "due": r["due"] if r["due"] else 0
-        })
+        decks.append(
+            {
+                "id": r["deck_id"],
+                "name": str(r["deck_id"]).replace("-", " ").title(),
+                "total": r["total"],
+                "due": r["due"] if r["due"] else 0,
+            }
+        )
     return jsonify(decks)
 
 
@@ -106,18 +111,17 @@ def get_review_queue():
     deck_id = request.args.get("deck_id")
     today = date.today().isoformat()
     conn = get_db_connection()
-    
+
     if deck_id:
         rows = conn.execute(
             "SELECT * FROM Vocabulary WHERE next_review <= ? AND deck_id = ?",
-            (today, deck_id)
+            (today, deck_id),
         ).fetchall()
     else:
         rows = conn.execute(
-            "SELECT * FROM Vocabulary WHERE next_review <= ?", 
-            (today,)
+            "SELECT * FROM Vocabulary WHERE next_review <= ?", (today,)
         ).fetchall()
-        
+
     conn.close()
     return jsonify([row_to_dict(r) for r in rows])
 
@@ -127,11 +131,9 @@ def submit_review(card_id):
     """Process a review score and calculate the next review date."""
     body = request.get_json()
     quality = int(body.get("quality", 0))
-    
+
     conn = get_db_connection()
-    card = conn.execute(
-        "SELECT * FROM Vocabulary WHERE id = ?", (card_id,)
-    ).fetchone()
+    card = conn.execute("SELECT * FROM Vocabulary WHERE id = ?", (card_id,)).fetchone()
 
     if not card:
         conn.close()
@@ -142,7 +144,7 @@ def submit_review(card_id):
         quality=quality,
         repetition=card["repetition"],
         ef=card["ef"],
-        interval=card["interval"]
+        interval=card["interval"],
     )
 
     new_date = (date.today() + timedelta(days=i)).isoformat()
@@ -153,7 +155,7 @@ def submit_review(card_id):
         SET repetition = ?, ef = ?, interval = ?, next_review = ?
         WHERE id = ?
         """,
-        (n, ef, i, new_date, card_id)
+        (n, ef, i, new_date, card_id),
     )
     conn.commit()
     conn.close()
@@ -165,7 +167,7 @@ def submit_review(card_id):
 def handle_cards():
     """Fetch all cards or create a new single card."""
     conn = get_db_connection()
-    
+
     if request.method == "POST":
         body = request.get_json()
         front = body.get("front")
@@ -180,7 +182,7 @@ def handle_cards():
             (front, back, deck_id, tags, next_review) 
             VALUES (?, ?, ?, ?, ?)
             """,
-            (front, back, deck_id, tags, today)
+            (front, back, deck_id, tags, today),
         )
         conn.commit()
         new_id = cursor.lastrowid
@@ -197,7 +199,7 @@ def handle_cards():
 def update_delete_card(card_id):
     """Edit or delete a specific card."""
     conn = get_db_connection()
-    
+
     if request.method == "DELETE":
         conn.execute("DELETE FROM Vocabulary WHERE id = ?", (card_id,))
         conn.commit()
@@ -212,7 +214,7 @@ def update_delete_card(card_id):
 
     conn.execute(
         "UPDATE Vocabulary SET front = ?, back = ?, tags = ? WHERE id = ?",
-        (front, back, tags, card_id)
+        (front, back, tags, card_id),
     )
     conn.commit()
     conn.close()
@@ -226,7 +228,7 @@ def bulk_import():
     deck_id = body.get("deck_id", "imported")
     pairs = body.get("pairs", [])
     today = date.today().isoformat()
-    
+
     conn = get_db_connection()
     inserted = 0
     for p in pairs:
@@ -236,10 +238,10 @@ def bulk_import():
             (front, back, deck_id, next_review) 
             VALUES (?, ?, ?, ?)
             """,
-            (p.get("front"), p.get("back"), deck_id, today)
+            (p.get("front"), p.get("back"), deck_id, today),
         )
         inserted += 1
-        
+
     conn.commit()
     conn.close()
     return jsonify({"added": inserted}), 201
