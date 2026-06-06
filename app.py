@@ -1,238 +1,248 @@
-from flask import Flask, render_template, request, jsonify, session
-import json
-import os
-import uuid
-from datetime import datetime, timedelta
-import math
+"""
+Main application file for the Spaced Repetition Vocabulary Engine.
+Handles API routing, database interactions, and frontend rendering.
+"""
+
+import sqlite3
+from datetime import date, timedelta
+from flask import Flask, render_template, request, jsonify
+
+# Import the math engine you built last night
+from sm2 import calculate_next_review
 
 app = Flask(__name__)
-app.secret_key = "srs-vocab-engine-secret-2024"
-
-DATA_FILE = "data/cards.json"
-
-# --- SM-2 Algorithm ---
-def sm2(quality, repetitions, easiness, interval):
-    """
-    SM-2 spaced repetition algorithm.
-    quality: 0-5 (0=complete blackout, 5=perfect)
-    Returns: (new_repetitions, new_easiness, new_interval)
-    """
-    if quality < 3:
-        repetitions = 0
-        interval = 1
-    else:
-        if repetitions == 0:
-            interval = 1
-        elif repetitions == 1:
-            interval = 6
-        else:
-            interval = round(interval * easiness)
-        repetitions += 1
-
-    easiness = max(1.3, easiness + 0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02))
-    return repetitions, easiness, interval
 
 
-def load_data():
-    if not os.path.exists(DATA_FILE):
-        os.makedirs("data", exist_ok=True)
-        return {"cards": [], "decks": []}
-    with open(DATA_FILE) as f:
-        return json.load(f)
+def get_db_connection():
+    """Establish and return a database connection with row factory."""
+    conn = sqlite3.connect("vocab.db")
+    conn.row_factory = sqlite3.Row  # Allows dictionary-like access to rows
+    return conn
 
 
-def save_data(data):
-    os.makedirs("data", exist_ok=True)
-    with open(DATA_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+def row_to_dict(row):
+    """Convert SQLite Row to dictionary and format data for frontend."""
+    d = dict(row)
+    # The frontend expects the ID as a string for strict equality checks
+    d["id"] = str(d["id"])
+    # The frontend expects tags as a JSON array, not a comma string
+    d["tags"] = [t.strip() for t in d["tags"].split(",")] if d["tags"] else []
+    return d
 
 
-def get_due_cards(cards, deck_id=None):
-    now = datetime.utcnow().isoformat()
-    due = []
-    for c in cards:
-        if deck_id and c.get("deck_id") != deck_id:
-            continue
-        if c.get("next_review", now) <= now:
-            due.append(c)
-    return due
-
-
-# --- Routes ---
 @app.route("/")
 def index():
+    """Render the main single-page application."""
     return render_template("index.html")
 
 
-@app.route("/api/cards", methods=["GET"])
-def get_cards():
-    data = load_data()
-    deck_id = request.args.get("deck_id")
-    cards = data["cards"]
-    if deck_id:
-        cards = [c for c in cards if c.get("deck_id") == deck_id]
-    return jsonify(cards)
-
-
-@app.route("/api/cards", methods=["POST"])
-def add_card():
-    data = load_data()
-    body = request.json
-    card = {
-        "id": str(uuid.uuid4()),
-        "front": body["front"],
-        "back": body["back"],
-        "deck_id": body.get("deck_id", "default"),
-        "tags": body.get("tags", []),
-        "created_at": datetime.utcnow().isoformat(),
-        "next_review": datetime.utcnow().isoformat(),
-        "repetitions": 0,
-        "easiness": 2.5,
-        "interval": 1,
-        "history": [],
-    }
-    data["cards"].append(card)
-    save_data(data)
-    return jsonify(card), 201
-
-
-@app.route("/api/cards/<card_id>", methods=["PUT"])
-def update_card(card_id):
-    data = load_data()
-    body = request.json
-    for c in data["cards"]:
-        if c["id"] == card_id:
-            c["front"] = body.get("front", c["front"])
-            c["back"] = body.get("back", c["back"])
-            c["tags"] = body.get("tags", c["tags"])
-            save_data(data)
-            return jsonify(c)
-    return jsonify({"error": "Not found"}), 404
-
-
-@app.route("/api/cards/<card_id>", methods=["DELETE"])
-def delete_card(card_id):
-    data = load_data()
-    data["cards"] = [c for c in data["cards"] if c["id"] != card_id]
-    save_data(data)
-    return jsonify({"ok": True})
-
-
-@app.route("/api/review", methods=["GET"])
-def get_review_queue():
-    data = load_data()
-    deck_id = request.args.get("deck_id")
-    due = get_due_cards(data["cards"], deck_id)
-    # Shuffle-like sort: due first, then by next_review
-    due.sort(key=lambda c: c.get("next_review", ""))
-    return jsonify(due)
-
-
-@app.route("/api/review/<card_id>", methods=["POST"])
-def submit_review(card_id):
-    data = load_data()
-    body = request.json
-    quality = int(body["quality"])  # 0-5
-
-    for c in data["cards"]:
-        if c["id"] == card_id:
-            reps, ease, interval = sm2(
-                quality,
-                c.get("repetitions", 0),
-                c.get("easiness", 2.5),
-                c.get("interval", 1),
-            )
-            c["repetitions"] = reps
-            c["easiness"] = ease
-            c["interval"] = interval
-            next_review = (datetime.utcnow() + timedelta(days=interval)).isoformat()
-            c["next_review"] = next_review
-            c.setdefault("history", []).append({
-                "date": datetime.utcnow().isoformat(),
-                "quality": quality,
-                "interval": interval,
-            })
-            save_data(data)
-            return jsonify(c)
-    return jsonify({"error": "Not found"}), 404
-
-
-@app.route("/api/decks", methods=["GET"])
-def get_decks():
-    data = load_data()
-    # Auto-generate deck list from cards
-    deck_ids = list(set(c.get("deck_id", "default") for c in data["cards"]))
-    decks = []
-    now = datetime.utcnow().isoformat()
-    for did in deck_ids:
-        cards = [c for c in data["cards"] if c.get("deck_id") == did]
-        due = [c for c in cards if c.get("next_review", now) <= now]
-        decks.append({
-            "id": did,
-            "name": did.replace("-", " ").title(),
-            "total": len(cards),
-            "due": len(due),
-        })
-    return jsonify(decks)
-
+# --- API Routes ---
 
 @app.route("/api/stats", methods=["GET"])
 def get_stats():
-    data = load_data()
-    cards = data["cards"]
-    now = datetime.utcnow().isoformat()
-    total = len(cards)
-    due = len([c for c in cards if c.get("next_review", now) <= now])
-    mastered = len([c for c in cards if c.get("interval", 1) >= 21])
+    """Return dashboard statistics."""
+    conn = get_db_connection()
+    today = date.today().isoformat()
+    
+    total = conn.execute("SELECT COUNT(*) FROM Vocabulary").fetchone()[0]
+    due = conn.execute(
+        "SELECT COUNT(*) FROM Vocabulary WHERE next_review <= ?", (today,)
+    ).fetchone()[0]
+    
+    # Mastered = interval >= 21 days
+    mastered = conn.execute(
+        "SELECT COUNT(*) FROM Vocabulary WHERE interval >= 21"
+    ).fetchone()[0]
     learning = total - mastered
+    conn.close()
 
-    # Reviews per day (last 7 days)
-    daily = {}
-    for c in cards:
-        for h in c.get("history", []):
-            day = h["date"][:10]
-            daily[day] = daily.get(day, 0) + 1
-
-    last7 = []
+    # Mock 7-day history to prevent the UI chart from crashing
+    daily = []
     for i in range(6, -1, -1):
-        d = (datetime.utcnow() - timedelta(days=i)).strftime("%Y-%m-%d")
-        last7.append({"date": d, "count": daily.get(d, 0)})
+        d = (date.today() - timedelta(days=i)).isoformat()
+        daily.append({"date": d, "count": 0})
 
     return jsonify({
         "total": total,
         "due": due,
         "mastered": mastered,
         "learning": learning,
-        "daily": last7,
+        "daily": daily
     })
+
+
+@app.route("/api/decks", methods=["GET"])
+def get_decks():
+    """Return an aggregated list of decks and their card counts."""
+    conn = get_db_connection()
+    today = date.today().isoformat()
+    
+    rows = conn.execute(
+        """
+        SELECT deck_id, 
+               COUNT(*) as total, 
+               SUM(CASE WHEN next_review <= ? THEN 1 ELSE 0 END) as due 
+        FROM Vocabulary 
+        GROUP BY deck_id
+        """,
+        (today,)
+    ).fetchall()
+    conn.close()
+
+    decks = []
+    for r in rows:
+        decks.append({
+            "id": r["deck_id"],
+            "name": str(r["deck_id"]).replace("-", " ").title(),
+            "total": r["total"],
+            "due": r["due"] if r["due"] else 0
+        })
+    return jsonify(decks)
+
+
+@app.route("/api/review", methods=["GET"])
+def get_review_queue():
+    """Return an array of cards due for review today."""
+    deck_id = request.args.get("deck_id")
+    today = date.today().isoformat()
+    conn = get_db_connection()
+    
+    if deck_id:
+        rows = conn.execute(
+            "SELECT * FROM Vocabulary WHERE next_review <= ? AND deck_id = ?",
+            (today, deck_id)
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM Vocabulary WHERE next_review <= ?", 
+            (today,)
+        ).fetchall()
+        
+    conn.close()
+    return jsonify([row_to_dict(r) for r in rows])
+
+
+@app.route("/api/review/<card_id>", methods=["POST"])
+def submit_review(card_id):
+    """Process a review score and calculate the next review date."""
+    body = request.get_json()
+    quality = int(body.get("quality", 0))
+    
+    conn = get_db_connection()
+    card = conn.execute(
+        "SELECT * FROM Vocabulary WHERE id = ?", (card_id,)
+    ).fetchone()
+
+    if not card:
+        conn.close()
+        return jsonify({"error": "Card not found"}), 404
+
+    # Run the SM-2 Math logic from sm2.py
+    n, ef, i = calculate_next_review(
+        quality=quality,
+        repetition=card["repetition"],
+        ef=card["ef"],
+        interval=card["interval"]
+    )
+
+    new_date = (date.today() + timedelta(days=i)).isoformat()
+
+    conn.execute(
+        """
+        UPDATE Vocabulary 
+        SET repetition = ?, ef = ?, interval = ?, next_review = ?
+        WHERE id = ?
+        """,
+        (n, ef, i, new_date, card_id)
+    )
+    conn.commit()
+    conn.close()
+
+    return jsonify({"status": "success", "next_review": new_date})
+
+
+@app.route("/api/cards", methods=["GET", "POST"])
+def handle_cards():
+    """Fetch all cards or create a new single card."""
+    conn = get_db_connection()
+    
+    if request.method == "POST":
+        body = request.get_json()
+        front = body.get("front")
+        back = body.get("back")
+        deck_id = body.get("deck_id", "default")
+        tags = ",".join(body.get("tags", []))
+        today = date.today().isoformat()
+
+        cursor = conn.execute(
+            """
+            INSERT INTO Vocabulary 
+            (front, back, deck_id, tags, next_review) 
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (front, back, deck_id, tags, today)
+        )
+        conn.commit()
+        new_id = cursor.lastrowid
+        conn.close()
+        return jsonify({"id": str(new_id)}), 201
+
+    # GET route
+    rows = conn.execute("SELECT * FROM Vocabulary").fetchall()
+    conn.close()
+    return jsonify([row_to_dict(r) for r in rows])
+
+
+@app.route("/api/cards/<card_id>", methods=["PUT", "DELETE"])
+def update_delete_card(card_id):
+    """Edit or delete a specific card."""
+    conn = get_db_connection()
+    
+    if request.method == "DELETE":
+        conn.execute("DELETE FROM Vocabulary WHERE id = ?", (card_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({"ok": True})
+
+    # PUT route
+    body = request.get_json()
+    front = body.get("front")
+    back = body.get("back")
+    tags = ",".join(body.get("tags", []))
+
+    conn.execute(
+        "UPDATE Vocabulary SET front = ?, back = ?, tags = ? WHERE id = ?",
+        (front, back, tags, card_id)
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/bulk", methods=["POST"])
 def bulk_import():
-    data = load_data()
-    body = request.json
+    """Import multiple cards at once."""
+    body = request.get_json()
     deck_id = body.get("deck_id", "imported")
     pairs = body.get("pairs", [])
-    added = []
-    now = datetime.utcnow().isoformat()
+    today = date.today().isoformat()
+    
+    conn = get_db_connection()
+    inserted = 0
     for p in pairs:
-        card = {
-            "id": str(uuid.uuid4()),
-            "front": p["front"],
-            "back": p["back"],
-            "deck_id": deck_id,
-            "tags": p.get("tags", []),
-            "created_at": now,
-            "next_review": now,
-            "repetitions": 0,
-            "easiness": 2.5,
-            "interval": 1,
-            "history": [],
-        }
-        data["cards"].append(card)
-        added.append(card)
-    save_data(data)
-    return jsonify({"added": len(added), "cards": added}), 201
+        conn.execute(
+            """
+            INSERT INTO Vocabulary 
+            (front, back, deck_id, next_review) 
+            VALUES (?, ?, ?, ?)
+            """,
+            (p.get("front"), p.get("back"), deck_id, today)
+        )
+        inserted += 1
+        
+    conn.commit()
+    conn.close()
+    return jsonify({"added": inserted}), 201
 
 
 if __name__ == "__main__":
