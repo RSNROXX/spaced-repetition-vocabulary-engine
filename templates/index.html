@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lexis — Spaced Repetition Engine</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,600;1,9..144,300&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/main.css" />
+</head>
+<body>
+
+<!-- Ambient background -->
+<div class="ambient">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+</div>
+
+<!-- Sidebar -->
+<aside class="sidebar">
+  <div class="logo">
+    <!-- <span class="logo-mark">λ</span> -->
+    <span class="logo-text">Deutsch Vocabulary</span>
+  </div>
+  <nav class="nav">
+    <button class="nav-btn active" data-view="dashboard">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      Dashboard
+    </button>
+    <button class="nav-btn" data-view="review">
+      <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 1 0 20A10 10 0 0 1 12 2z"/><path d="M12 6v6l4 2"/></svg>
+      Review
+    </button>
+    <button class="nav-btn" data-view="cards">
+      <svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+      Cards
+    </button>
+    <button class="nav-btn" data-view="add">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>
+      Add Cards
+    </button>
+    <button class="nav-btn" data-view="stats">
+      <svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 16l4-4 4 4 4-6"/></svg>
+      Stats
+    </button>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="streak-display">
+      <span class="streak-icon">🔥</span>
+      <span class="streak-count" id="streakCount">0</span>
+      <span class="streak-label">day streak</span>
+    </div>
+  </div>
+</aside>
+
+<!-- Main Content -->
+<main class="main">
+
+  <!-- DASHBOARD VIEW -->
+  <section class="view active" id="view-dashboard">
+    <div class="view-header">
+      <h1 class="view-title">Good <span id="timeGreeting">morning</span></h1>
+      <p class="view-sub">Your memory garden awaits.</p>
+    </div>
+    <div class="dash-grid">
+      <div class="stat-card stat-card--due">
+        <div class="stat-label">Due Today</div>
+        <div class="stat-value" id="statDue">—</div>
+        <button class="stat-action" onclick="switchView('review')">Start Review →</button>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Total Cards</div>
+        <div class="stat-value" id="statTotal">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Mastered</div>
+        <div class="stat-value" id="statMastered">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Learning</div>
+        <div class="stat-value" id="statLearning">—</div>
+      </div>
+    </div>
+    <div class="deck-section">
+      <h2 class="section-title">Decks</h2>
+      <div class="deck-list" id="deckList">
+        <div class="loading-dots"><span></span><span></span><span></span></div>
+      </div>
+    </div>
+    <div class="activity-section">
+      <h2 class="section-title">7-Day Activity</h2>
+      <div class="activity-chart" id="activityChart"></div>
+    </div>
+  </section>
+
+  <!-- REVIEW VIEW -->
+  <section class="view" id="view-review">
+    <div class="view-header">
+      <h1 class="view-title">Review Session</h1>
+      <p class="view-sub" id="reviewQueueInfo">Loading queue…</p>
+    </div>
+    <div class="review-arena" id="reviewArena">
+      <div class="loading-dots"><span></span><span></span><span></span></div>
+    </div>
+  </section>
+
+  <!-- CARDS VIEW -->
+  <section class="view" id="view-cards">
+    <div class="view-header">
+      <h1 class="view-title">All Cards</h1>
+      <div class="cards-toolbar">
+        <input class="search-input" id="cardSearch" type="text" placeholder="Search cards…" oninput="filterCards()"/>
+        <select class="deck-filter" id="deckFilter" onchange="filterCards()">
+          <option value="">All Decks</option>
+        </select>
+      </div>
+    </div>
+    <div class="cards-grid" id="cardsGrid">
+      <div class="loading-dots"><span></span><span></span><span></span></div>
+    </div>
+  </section>
+
+  <!-- ADD CARDS VIEW -->
+  <section class="view" id="view-add">
+    <div class="view-header">
+      <h1 class="view-title">Add Cards</h1>
+    </div>
+    <div class="add-layout">
+      <div class="add-panel">
+        <h2 class="panel-title">Single Card</h2>
+        <div class="form-group">
+          <label class="form-label">Front (Question / Word)</label>
+          <textarea class="form-control" id="addFront" rows="3" placeholder="e.g. ephemeral"></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Back (Answer / Definition)</label>
+          <textarea class="form-control" id="addBack" rows="3" placeholder="e.g. lasting for a very short time"></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Deck</label>
+          <input class="form-control" id="addDeck" type="text" placeholder="e.g. english-vocab" value="default" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Tags (comma-separated)</label>
+          <input class="form-control" id="addTags" type="text" placeholder="e.g. adjective, advanced" />
+        </div>
+        <button class="btn btn-primary" onclick="addSingleCard()">Add Card</button>
+        <div class="form-feedback" id="addFeedback"></div>
+      </div>
+      <div class="add-panel">
+        <h2 class="panel-title">Bulk Import</h2>
+        <p class="panel-desc">Paste pairs separated by <code>::</code>, one per line.</p>
+        <div class="form-group">
+          <label class="form-label">Deck Name</label>
+          <input class="form-control" id="bulkDeck" type="text" placeholder="e.g. spanish-basics" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Cards</label>
+          <textarea class="form-control" id="bulkText" rows="10" placeholder="hello :: hola&#10;goodbye :: adiós&#10;thank you :: gracias"></textarea>
+        </div>
+        <button class="btn btn-primary" onclick="bulkImport()">Import</button>
+        <div class="form-feedback" id="bulkFeedback"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATS VIEW -->
+  <section class="view" id="view-stats">
+    <div class="view-header">
+      <h1 class="view-title">Statistics</h1>
+    </div>
+    <div class="stats-layout">
+      <div class="stats-row">
+        <div class="big-stat">
+          <div class="big-stat-value" id="bigTotal">—</div>
+          <div class="big-stat-label">Total Cards</div>
+        </div>
+        <div class="big-stat">
+          <div class="big-stat-value" id="bigDue">—</div>
+          <div class="big-stat-label">Due Now</div>
+        </div>
+        <div class="big-stat">
+          <div class="big-stat-value" id="bigMastered">—</div>
+          <div class="big-stat-label">Mastered</div>
+        </div>
+      </div>
+      <div class="chart-section">
+        <h2 class="section-title">Reviews Per Day</h2>
+        <div class="bar-chart" id="barChart"></div>
+      </div>
+      <div class="chart-section">
+        <h2 class="section-title">Mastery Breakdown</h2>
+        <div class="donut-wrap">
+          <svg class="donut" viewBox="0 0 120 120" id="donutChart"></svg>
+          <div class="donut-legend" id="donutLegend"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- Edit Card Modal -->
+<div class="modal-overlay" id="editModal" onclick="closeEditModal(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Edit Card</h3>
+      <button class="modal-close" onclick="closeEditModal()">✕</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Front</label>
+      <textarea class="form-control" id="editFront" rows="3"></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Back</label>
+      <textarea class="form-control" id="editBack" rows="3"></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Tags</label>
+      <input class="form-control" id="editTags" type="text" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-danger" onclick="deleteCard()">Delete</button>
+      <button class="btn btn-primary" onclick="saveEdit()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>
