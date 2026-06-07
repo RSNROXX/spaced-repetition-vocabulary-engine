@@ -1,6 +1,7 @@
 # Spaced Repetition Vocabulary Engine
 
 A full-stack web application designed for language learning, utilizing a mathematically rigorous implementation of the SM-2 spaced repetition algorithm to optimize memory retention.
+LIVE DEMO: http://rishikeshnaware.pythonanywhere.com
 
 ## 🏗️ Architecture
 
