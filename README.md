@@ -1,7 +1,8 @@
 # Spaced Repetition Vocabulary Engine
 
 A full-stack web application designed for language learning, utilizing a mathematically rigorous implementation of the SM-2 spaced repetition algorithm to optimize memory retention.
-LIVE DEMO: http://rishikeshnaware.pythonanywhere.com
+
+**Live Demo:** [http://rishikeshnaware.pythonanywhere.com](http://rishikeshnaware.pythonanywhere.com)
 
 ## 🏗️ Architecture
 
@@ -78,6 +79,6 @@ Critical Production Notes:
 3. **Ephemeral Storage Avoidance**: Standard Docker/Render containers wipe SQLite databases on restart. PythonAnywhere provides the required persistent file system for `vocab.db`.
 
 ## 👥 Authors
-Rishikesh Naware 
+[Rishikesh Naware](https://github.com/your-github-username)
 
-Chandu Makuta 
+[Chandu Makuta](https://github.com/madukachandu26-a11y) 
