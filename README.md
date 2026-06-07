@@ -26,7 +26,7 @@ To run this application on a local development machine, follow these exact steps
 
 **1. Clone the repository**
 ```bash
-git clone <your-repository-url>
+git clone https://github.com/RSNROXX/spaced-repetition-vocabulary-engine
 cd spaced-repetition-vocabulary-engine
 ```
 
@@ -78,4 +78,5 @@ Critical Production Notes:
 
 ## 👥 Authors
 Rishikesh Naware 
+
 Chandu Makuta 
