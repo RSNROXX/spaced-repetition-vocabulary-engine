@@ -81,4 +81,4 @@ Critical Production Notes:
 ## 👥 Authors
 [Rishikesh Naware](https://github.com/your-github-username)
 
-[Chandu Makuta](https://github.com/madukachandu26-a11y) 
+[Chandu Maduka](https://github.com/madukachandu26-a11y) 
