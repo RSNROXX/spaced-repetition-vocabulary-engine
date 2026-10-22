@@ -217,4 +217,7 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-.vscode
+.venv/
+.venv-ci/
+__pycache__/
+.pytest_cache/
